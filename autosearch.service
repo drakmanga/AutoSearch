@@ -1,0 +1,14 @@
+# Avvio automatico nel CT/server: vedi README (sezione Server)
+[Unit]
+Description=AutoSearch
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/autosearch
+ExecStart=/opt/autosearch/.venv/bin/python -m autosearch.web --host 0.0.0.0 --port 8765 --no-idle-shutdown
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

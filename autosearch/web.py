@@ -125,7 +125,9 @@ def make_handler(cfg_path: str, store: Store, status: RunState):
 def main() -> None:
     p = argparse.ArgumentParser(prog="autosearch.web")
     p.add_argument("-c", "--config", default="config.yaml")
+    p.add_argument("--host", default="127.0.0.1", help="0.0.0.0 to reach it from the LAN")
     p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--no-idle-shutdown", action="store_true", help="keep running (for a systemd service)")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -133,12 +135,13 @@ def main() -> None:
     store, status = Store(db_path), RunState(db_path)
     # run.sh restarts the server when the code is newer than this file
     (Path(db_path).parent / "server.pid").write_text(str(os.getpid()))
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(args.config, store, status))
+    server = ThreadingHTTPServer((args.host, args.port), make_handler(args.config, store, status))
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    log.info("http://127.0.0.1:%d", args.port)
+    log.info("http://%s:%d", args.host, args.port)
     while True:
         time.sleep(30)
-        if time.time() - last_request > IDLE_SHUTDOWN_SECONDS and not status.busy():
+        if (not args.no_idle_shutdown and time.time() - last_request > IDLE_SHUTDOWN_SECONDS
+                and not status.busy()):
             log.info("idle, shutting down")
             server.shutdown()
             return

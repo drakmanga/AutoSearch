@@ -36,3 +36,14 @@ Da terminale:
 - Esporta: pulsante "Esporta Excel" nella pagina (CSV con stato, note, RAL, link).
 - Doppioni: annunci con titolo quasi uguale, stessa città e descrizione simile vengono mostrati come uno solo.
 - Nuove sorgenti: implementa il protocollo in `autosearch/sources/base.py`.
+
+## Server (es. CT Debian su Proxmox)
+
+    apt install -y git python3-venv
+    git clone https://github.com/drakmanga/AutoSearch.git /opt/autosearch && cd /opt/autosearch
+    python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+    cp config.example.yaml config.yaml
+    cp autosearch.service /etc/systemd/system/ && systemctl enable --now autosearch
+
+Pagina su http://<ip>:8765, raggiungibile da tutta la LAN (nessun login: non esporla su internet, usa una VPN).
+Log: `journalctl -u autosearch -f`. Aggiornare: `git pull && systemctl restart autosearch`.
