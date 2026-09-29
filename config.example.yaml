@@ -15,6 +15,13 @@ keywords_inpa:
 # LinkedIn: solo offerte pubblicate negli ultimi N giorni (1-30). Le già viste vengono comunque scartate.
 posted_within_days: 7
 
+# Ricerca automatica (modificabile dalla pagina): giorni 0 = lunedì ... 6 = domenica, orari HH:MM
+schedule:
+  enabled: false
+  days: [0, 1, 2, 3, 4, 5, 6]
+  times: ["08:00"]
+timezone: Europe/Rome
+
 searches:
   # Roma: presenza, ibrido e remoto
   - location: Rome                     # nome inglese (Italy, Milan, Rome...)

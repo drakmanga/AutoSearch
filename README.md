@@ -35,6 +35,8 @@ Da terminale:
   chiudi la pagina, copia il backup scelto su `data/jobs.db`.
 - Esporta: pulsante "Esporta Excel" nella pagina (CSV con stato, note, RAL, link).
 - Doppioni: annunci con titolo quasi uguale, stessa città e descrizione simile vengono mostrati come uno solo.
+- Ricerca automatica: in Impostazioni scegli giorni e orari (ora italiana). Parte solo se il programma è
+  acceso: sul server sempre; sul PC, con la ricerca automatica attiva, non si chiude più da solo dopo 15 min.
 - Nuove sorgenti: implementa il protocollo in `autosearch/sources/base.py`.
 
 ## Server (es. CT Debian su Proxmox)

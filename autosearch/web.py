@@ -7,8 +7,10 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from . import config, dedupe
 from .filters import WORKPLACE_LABEL
@@ -18,7 +20,9 @@ from .storage import Store
 
 log = logging.getLogger("autosearch.web")
 INDEX = Path(__file__).with_name("index.html")
-IDLE_SHUTDOWN_SECONDS = 15 * 60  # exit when page closed and no search running
+IDLE_SHUTDOWN_SECONDS = 15 * 60  # exit when page closed and no search running (unless a schedule is on)
+FAVICON = Path(__file__).with_name("favicon.svg")
+TOUCH_ICON = Path(__file__).with_name("icon-180.png")
 
 last_request = time.time()
 
@@ -39,6 +43,25 @@ def start_search(cfg_path: str) -> bool:
     threading.Thread(target=worker, daemon=True).start()
     time.sleep(0.3)  # let the worker write status.json before the page polls
     return True
+
+
+def next_auto(cfg_path: str, after: datetime | None = None) -> datetime | None:
+    """First scheduled search strictly after `after` (default: now), or None if the schedule is off."""
+    s = config.get_settings(cfg_path)
+    if not (s["schedule_enabled"] and s["schedule_days"] and s["schedule_times"]):
+        return None
+    tz = ZoneInfo(s["timezone"])
+    after = (after or datetime.now(tz)).astimezone(tz)
+    for d in range(8):
+        day = after.date() + timedelta(days=d)
+        if day.weekday() not in s["schedule_days"]:
+            continue
+        for t in s["schedule_times"]:
+            h, m = map(int, t.split(":"))
+            at = datetime(day.year, day.month, day.day, h, m, tzinfo=tz)
+            if at > after:
+                return at
+    return None
 
 
 STATUS_LABEL = {"new": "Da valutare", "interested": "Interessante", "applied": "Candidatura inviata",
@@ -93,7 +116,12 @@ def make_handler(cfg_path: str, store: Store, status: RunState):
                 self._send(export_csv(store.listed()), "text/csv; charset=utf-8",
                            headers={"Content-Disposition": 'attachment; filename="offerte.csv"'})
             elif self.path == "/api/status":
-                self._json(status.read())
+                nxt = next_auto(cfg_path)
+                self._json({**status.read(), "next_auto": nxt.isoformat() if nxt else None})
+            elif self.path == "/favicon.svg":
+                self._send(FAVICON.read_bytes(), "image/svg+xml", headers={"Cache-Control": "max-age=86400"})
+            elif self.path in ("/favicon.ico", "/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"):
+                self._send(TOUCH_ICON.read_bytes(), "image/png", headers={"Cache-Control": "max-age=86400"})
             elif self.path == "/api/settings":
                 self._json(config.get_settings(cfg_path))
             else:
@@ -138,10 +166,21 @@ def main() -> None:
     server = ThreadingHTTPServer((args.host, args.port), make_handler(args.config, store, status))
     threading.Thread(target=server.serve_forever, daemon=True).start()
     log.info("http://%s:%d", args.host, args.port)
+    last_check = datetime.now().astimezone()
     while True:
-        time.sleep(30)
+        time.sleep(20)
+        now = datetime.now().astimezone()
+        try:
+            due, upcoming = next_auto(args.config, last_check), next_auto(args.config, now)
+        except Exception:  # bad schedule in config.yaml: log it, keep serving
+            log.exception("schedule")
+            due = upcoming = None
+        last_check = now
+        if due and due <= now:
+            log.info("scheduled search (%s)", due.strftime("%a %H:%M"))
+            start_search(args.config)
         if (not args.no_idle_shutdown and time.time() - last_request > IDLE_SHUTDOWN_SECONDS
-                and not status.busy()):
+                and not status.busy() and not upcoming):
             log.info("idle, shutting down")
             server.shutdown()
             return

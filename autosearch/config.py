@@ -90,7 +90,28 @@ def get_settings(path: str | Path) -> dict:
         "max_years": int(f.get("max_years", 0)),
         "years_action": f.get("years_action", "grade_c"),
         "grades": raw.get("grades", {"A": 10, "B": 5}),
+        **schedule(raw),
     }
+
+
+def schedule(raw: dict) -> dict:
+    """Automatic searches: on the given weekdays (0 = Monday) at the given HH:MM times."""
+    sch = raw.get("schedule") or {}
+    return {
+        "schedule_enabled": bool(sch.get("enabled", False)),
+        "schedule_days": sorted({int(d) for d in sch.get("days", range(7))}),
+        "schedule_times": sorted({_hhmm(t) for t in _as_list(sch.get("times", []))}),
+        "timezone": raw.get("timezone", "Europe/Rome"),
+    }
+
+
+def _hhmm(value) -> str:
+    if isinstance(value, int):  # YAML reads an unquoted 18:30 as 1110 (base 60)
+        value = f"{value // 60}:{value % 60}"
+    h, m = (int(x) for x in str(value).strip().split(":"))
+    if not (0 <= h < 24 and 0 <= m < 60):
+        raise ValueError(f"orario {value}")
+    return f"{h:02d}:{m:02d}"
 
 
 def save_settings(path: str | Path, data: dict) -> None:
@@ -113,9 +134,15 @@ def save_settings(path: str | Path, data: dict) -> None:
         raise ValueError("years_action")
     f["years_action"] = data.get("years_action", "grade_c")
     raw["grades"] = {"A": int(data["grades"]["A"]), "B": int(data["grades"]["B"])}
+    if "schedule_enabled" in data:
+        raw["schedule"] = {
+            "enabled": bool(data["schedule_enabled"]),
+            "days": sorted({int(d) for d in data.get("schedule_days", []) if 0 <= int(d) <= 6}),
+            "times": sorted({_hhmm(t) for t in data.get("schedule_times", [])}),
+        }
 
     # keep a readable key order
-    order = ["keywords", "keywords_inpa", "posted_within_days", "searches", "filters", "grades"]
+    order = ["keywords", "keywords_inpa", "posted_within_days", "schedule", "searches", "filters", "grades"]
     raw = {**{k: raw[k] for k in order if k in raw}, **{k: v for k, v in raw.items() if k not in order}}
     tmp = Path(path).with_suffix(".tmp")
     tmp.write_text(HEADER + yaml.safe_dump(raw, sort_keys=False, allow_unicode=True, width=100))

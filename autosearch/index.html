@@ -8,6 +8,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AutoSearch</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" type="image/png" sizes="180x180">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0a66c2">
 <style>
   :root {
     --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1f; --muted: #6b6b70; --line: #e4e2dc;
@@ -138,6 +142,13 @@
   .nums { display: flex; gap: 16px; flex-wrap: wrap; }
   .nums label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
   .nums input { width: 110px; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+  .days { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .day { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 14px;
+         padding: 3px 10px 3px 6px; font-size: 14px; cursor: pointer; }
+  .day:has(input:checked) { background: var(--chip); color: var(--chip-text); border-color: transparent; }
+  .presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .presets button { font-size: 13px; padding: 4px 10px; }
   .save { position: sticky; bottom: 0; padding: 12px 0; background: var(--bg); display: flex; gap: 12px;
           align-items: center; flex-wrap: wrap; }
 
@@ -236,6 +247,7 @@ const fmtWhen = s => {
   const d = new Date(s), today = new Date(), yesterday = new Date(Date.now() - 864e5);
   const day = d.toDateString() === today.toDateString() ? "oggi"
             : d.toDateString() === yesterday.toDateString() ? "ieri"
+            : d.toDateString() === new Date(Date.now() + 864e5).toDateString() ? "domani"
             : d.toLocaleDateString("it-IT", {weekday: "short", day: "numeric", month: "short"});
   return `${day} alle ${d.toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"})}`;
 };
@@ -478,6 +490,38 @@ const LISTS = {
     "Scarta l'offerta se la lingua è richiesta; va bene se indicata come gradita. Usa la radice (tedesc = tedesco/tedesca)."],
 };
 
+const DAYS = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];  // 0 = Monday, as on the server
+const PRESETS = {"Ogni giorno": [0, 1, 2, 3, 4, 5, 6], "Lun–Ven": [0, 1, 2, 3, 4], "Una volta a settimana (lun)": [0]};
+
+function scheduleSection(s) {
+  s.schedule_times.sort();
+  return `<section>
+      <h3>Ricerca automatica</h3>
+      <p class="muted">Cerca nuove offerte da sola nei giorni e agli orari scelti (ora italiana).
+        Funziona finché il programma è acceso: sul server sempre, sul PC solo finché non lo spegni.</p>
+      <label class="check"><input type="checkbox" id="schedule_enabled" ${s.schedule_enabled ? "checked" : ""}> Attiva</label>
+      <div class="presets">${Object.keys(PRESETS).map(p => `<button type="button" data-preset="${p}">${p}</button>`).join("")}</div>
+      <div class="days">${DAYS.map((d, i) =>
+        `<label class="day"><input type="checkbox" data-day="${i}" ${s.schedule_days.includes(i) ? "checked" : ""}>${d}</label>`).join("")}</div>
+      <div class="tags">${s.schedule_times.map((t, i) =>
+        `<span class="tag">${esc(t)}<button data-del="schedule_times" data-i="${i}" title="Rimuovi">×</button></span>`).join("")
+        || '<span class="muted">nessun orario</span>'}</div>
+      <form class="add" data-add="schedule_times"><input type="time" aria-label="Orario"><button>Aggiungi orario</button></form>
+      <p class="muted" id="next-auto" style="margin-top:8px"></p>
+    </section>`;
+}
+
+let nextAuto = null;
+function nextAutoHint() {
+  const el = $("next-auto");
+  if (!el) return;
+  const s = settings;
+  el.innerHTML = !s.schedule_enabled ? "Disattivata."
+    : !s.schedule_days.length || !s.schedule_times.length
+      ? `<span class="error">Scegli almeno un giorno e un orario.</span>`
+    : nextAuto ? `Prossima ricerca automatica: ${fmtWhen(nextAuto)}.` : "";
+}
+
 function renderSettings() {
   const s = settings;
   const weighted = Object.entries(s.nice_to_have).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
@@ -501,6 +545,7 @@ function renderSettings() {
         `<option value="${n}" ${n === s.posted_within_days ? "selected" : ""}>${n === 1 ? "24 ore" : n + " giorni"}</option>`).join("")}</select></label></div>
       <p class="muted" id="since-last" style="margin-top:8px"></p>
     </section>
+    ${scheduleSection(s)}
     <section>
       <h3>Parole che alzano il voto</h3>
       <p class="muted">Peso 1–3; se la parola è nel titolo vale doppio. Usa la radice per prendere le varianti
@@ -534,6 +579,7 @@ function renderSettings() {
     </section>
     <div class="save"><span id="save-msg" class="muted">Le modifiche si salvano da sole.</span></div>`;
   sinceLastHint();
+  nextAutoHint();
 }
 
 let lastFinished = null;
@@ -553,17 +599,27 @@ function readNumbers() {
   settings.max_years = Number($("max_years").value);
   settings.years_action = $("years_action").value;
   settings.grades = {A: Number($("grade_a").value), B: Number($("grade_b").value)};
+  settings.schedule_enabled = $("schedule_enabled").checked;
+  settings.schedule_days = [...document.querySelectorAll("[data-day]")].filter(c => c.checked).map(c => Number(c.dataset.day));
 }
 
 $("settings-view").addEventListener("click", e => {
   const t = e.target;
   if (t.dataset.del) { settings[t.dataset.del].splice(Number(t.dataset.i), 1); dirty(); }
   else if (t.dataset.delw) { delete settings.nice_to_have[t.dataset.delw]; dirty(); }
+  else if (t.dataset.preset) {
+    const days = PRESETS[t.dataset.preset];
+    document.querySelectorAll("[data-day]").forEach(c => { c.checked = days.includes(Number(c.dataset.day)); });
+    $("schedule_enabled").checked = true;
+    if (!settings.schedule_times.length) settings.schedule_times.push("08:00");
+    dirty();
+  }
 });
 $("settings-view").addEventListener("change", e => {
   if (e.target.dataset.weight) settings.nice_to_have[e.target.dataset.weight] = Number(e.target.value);
   dirty(false);
   sinceLastHint();
+  nextAutoHint();
 });
 // add the words typed in one "Aggiungi…" box (comma-separated allowed); returns true if something was added
 function addTyped(f) {
@@ -574,6 +630,7 @@ function addTyped(f) {
     else if (!settings[f.dataset.add].includes(w)) settings[f.dataset.add].push(w);
   }
   input.value = "";
+  if (f.dataset.add === "schedule_times" && words.length) $("schedule_enabled").checked = true;
   return words.length > 0;
 }
 
@@ -625,6 +682,7 @@ async function save() {
   const time = new Date().toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"});
   if (msg) msg.textContent = `✓ Salvato alle ${time} · ${r.matched} offerte pertinenti. Ruoli e parole di ricerca nuovi valgono dalla prossima ricerca.`;
   loadJobs();
+  poll();  // refresh the next scheduled search
   return true;
 }
 
@@ -648,7 +706,12 @@ $("q").oninput = $("sort").onchange = $("source").onchange = $("workplace").onch
 
 function showStatus(s) {
   lastFinished = s.finished_at || null;
-  $("schedule").textContent = s.finished_at && !s.running ? `Ultima ricerca: ${fmtWhen(s.finished_at)}` : "";
+  nextAuto = s.next_auto || null;
+  $("schedule").textContent = [
+    s.finished_at && !s.running ? `Ultima ricerca: ${fmtWhen(s.finished_at)}` : "",
+    nextAuto ? `Prossima automatica: ${fmtWhen(nextAuto)}` : "",
+  ].filter(Boolean).join(" · ");
+  nextAutoHint();
 
   const box = $("status");
   const warnings = !s.running && s.warnings?.length ? s.warnings : [];
