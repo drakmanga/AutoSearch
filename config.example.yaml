@@ -1,0 +1,61 @@
+# Esempio di configurazione: copia in config.yaml. Quasi tutto si modifica anche dalla pagina (Impostazioni).
+
+# Ruoli cercati su LinkedIn: ognuno viene cercato in ogni zona sotto
+keywords:
+  - data analyst
+  - business analyst
+  - analista dati
+
+# Parole cercate su inPA (concorsi pubblici): cerca nel titolo del bando, meglio parole singole
+keywords_inpa:
+  - informatico
+  - statistico
+  - funzionario amministrativo
+
+# LinkedIn: solo offerte pubblicate negli ultimi N giorni (1-30). Le già viste vengono comunque scartate.
+posted_within_days: 7
+
+searches:
+  # Roma: presenza, ibrido e remoto
+  - location: Rome                     # nome inglese (Italy, Milan, Rome...)
+    location_must_contain: [Rome, Roma] # LinkedIn usa un raggio (~40 km): tieni solo Roma città
+    remote: []                         # vuoto = tutte (onsite | remote | hybrid)
+    experience: [entry, associate, mid_senior]
+    max_results: 25
+  # Resto d'Italia: solo remoto
+  - location: Italy
+    remote: [remote]
+    experience: [entry, associate, mid_senior]
+    max_results: 25
+  # Concorsi pubblici (inPA), bandi aperti con sede Roma
+  - source: inpa
+    location_must_contain: [Roma]
+    max_results: 100
+
+filters:
+  must_have: []
+  # parola: peso 1-3 (nel titolo vale doppio). Troncare per prendere le varianti: analis -> analisi, analista
+  nice_to_have:
+    analis: 3
+    sql: 3
+    python: 2
+    power bi: 2
+    excel: 1
+  exclude: []
+  # mobilità = bandi riservati a chi è già dipendente pubblico
+  exclude_title: [stage, tirocinio, internship, head of, director, direttore, mobilità]
+  exclude_companies: []
+  # scarta se richieste, ok se opzionali ("gradito", "is a plus"...)
+  exclude_required_languages: [german, tedesc, french, frances, spanish, spagnol, portugues, portoghes,
+                               dutch, olandes, arab, chinese, cinese, russian, russ, polish, polacc]
+  min_score: 5
+  # anni di esperienza richiesti oltre questo limite: voto C (grade_c) o scarta (exclude); 0 = disattivo
+  max_years: 4
+  years_action: grade_c
+
+# voto: A se punteggio >= A, B se >= B, altrimenti C
+grades: {A: 10, B: 5}
+
+fetch_descriptions: true   # 1 richiesta extra per offerta: più preciso, più lento
+request_delay_seconds: 3
+db_path: data/jobs.db

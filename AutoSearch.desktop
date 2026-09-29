@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AutoSearch offerte
+Comment=Cerca nuove offerte di lavoro su LinkedIn
+Exec=/home/daniele/Scrivania/AutoSearch/run.sh
+Path=/home/daniele/Scrivania/AutoSearch
+Icon=system-search
+Terminal=false
+Categories=Utility;

@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="it">
+<head>
+<script>
+  // apply the saved theme before first paint (no flash)
+  try { const t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoSearch</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --text: #1d1d1f; --muted: #6b6b70; --line: #e4e2dc;
+    --accent: #0a66c2; --accent-text: #ffffff; --chip: #eef3f9; --chip-text: #0a4d8f;
+    --new: #1f8a4c; --error: #b3261e; --warn: #9a4a00; --warn-bg: #fdebd9;
+    --a: #1f8a4c; --a-bg: #e3f4ea; --b: #9a6700; --b-bg: #fbf0d9; --c: #6b6b70; --c-bg: #ececea;
+    --money: #0f6b4f; --money-bg: #e0f2ec; --src: #5b4b8a; --src-bg: #eeeaf8;
+    --sel: #0a66c2; --toast: #1d1d1f; --toast-text: #ffffff;
+  }
+  /* dark: follows the system unless the user picked a theme (data-theme on <html>) */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151517; --card: #1f1f22; --text: #ececef; --muted: #9a9aa1; --line: #313136;
+      --accent: #4b9be8; --accent-text: #0b1a2a; --chip: #1c2a3a; --chip-text: #9cc7f2;
+      --new: #4cc281; --error: #f2837a; --warn: #f2b27a; --warn-bg: #3a2616;
+      --a: #6fd49a; --a-bg: #173524; --b: #e8b95a; --b-bg: #3a2e12; --c: #a4a4ab; --c-bg: #2b2b2f;
+      --money: #7fd8b8; --money-bg: #15322a; --src: #c3b5f0; --src-bg: #2a2440;
+      --sel: #4b9be8; --toast: #ececef; --toast-text: #151517;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151517; --card: #1f1f22; --text: #ececef; --muted: #9a9aa1; --line: #313136;
+    --accent: #4b9be8; --accent-text: #0b1a2a; --chip: #1c2a3a; --chip-text: #9cc7f2;
+    --new: #4cc281; --error: #f2837a; --warn: #f2b27a; --warn-bg: #3a2616;
+    --a: #6fd49a; --a-bg: #173524; --b: #e8b95a; --b-bg: #3a2e12; --c: #a4a4ab; --c-bg: #2b2b2f;
+    --money: #7fd8b8; --money-bg: #15322a; --src: #c3b5f0; --src-bg: #2a2440;
+    --sel: #4b9be8; --toast: #ececef; --toast-text: #151517;
+  }
+  :root { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 24px 16px 80px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; }
+  h1 { font-size: 22px; margin: 0; }
+  .head-actions { display: flex; gap: 10px; align-items: center; }
+  #theme { padding: 8px 10px; font-size: 14px; }
+  #schedule { width: 100%; margin-top: -6px; }
+  button, select, input, textarea { font: inherit; }
+  button, .btn { cursor: pointer; border-radius: 7px; border: 1px solid var(--line); background: var(--card);
+                 color: var(--text); padding: 4px 10px; font-size: 13px; text-decoration: none; white-space: nowrap; }
+  button:hover, .btn:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent);
+                   font-weight: 600; padding: 10px 18px; font-size: 15px; }
+  button:disabled { opacity: .55; cursor: default; }
+  .status { margin: 16px 0; padding: 14px 16px; background: var(--card); border: 1px solid var(--line);
+            border-radius: 10px; }
+  .status[hidden] { display: none; }
+  .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+  .bar > div { height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .error { color: var(--error); }
+  .warnings { margin: 8px 0 0; padding-left: 18px; color: var(--warn); font-size: 14px; }
+
+  nav { display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 20px 0 0; border-bottom: 1px solid var(--line); }
+  nav button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none;
+               padding: 8px 10px; color: var(--muted); font-size: 15px; }
+  nav button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  nav .n { font-size: 12px; background: var(--line); border-radius: 9px; padding: 0 7px; margin-left: 4px; }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; margin: 14px 0 12px; flex-wrap: wrap; }
+  .toolbar input[type=search] { flex: 1; min-width: 150px; }
+  input[type=search], input[type=text], input[type=number], select, textarea {
+    padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
+
+  .job { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
+         margin-bottom: 8px; display: grid; grid-template-columns: auto 1fr; gap: 0 14px; scroll-margin: 80px; }
+  .job.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel); }
+  .job > div { min-width: 0; }
+  .grade { align-self: start; width: 44px; border-radius: 8px; display: flex; flex-direction: column; align-items: center;
+           padding: 5px 0 3px; border: none; font-weight: 800; font-size: 19px; line-height: 1.1; }
+  .grade small { font-size: 11px; font-weight: 600; opacity: .8; }
+  .grade.A { color: var(--a); background: var(--a-bg); }
+  .grade.B { color: var(--b); background: var(--b-bg); }
+  .grade.C { color: var(--c); background: var(--c-bg); }
+  .job h2 { font-size: 16px; margin: 0; line-height: 1.35; overflow-wrap: anywhere; }
+  .job h2 a { color: var(--accent); text-decoration: none; }
+  .job h2 a:hover { text-decoration: underline; }
+  .meta { color: var(--muted); font-size: 13.5px; margin-top: 1px; }
+  .meta a { color: inherit; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; margin-top: 7px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 5px; }
+  .pill { font-weight: 600; font-size: 12px; padding: 1px 8px; border-radius: 10px; }
+  .pill.salary { background: var(--money-bg); color: var(--money); }
+  .pill.src { background: var(--src-bg); color: var(--src); }
+  .pill.warn { background: var(--warn-bg); color: var(--warn); }
+  .pill.plain { background: var(--c-bg); color: var(--c); }
+  .pill.place { background: var(--chip); color: var(--chip-text); }
+  .badge { color: var(--new); font-size: 11px; font-weight: 700; margin-left: 6px; vertical-align: 2px; }
+  .actions { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; margin-left: auto; }
+  .actions select { padding: 3px 6px; font-size: 13px; }
+  .notes { width: 100%; margin-top: 8px; min-height: 36px; resize: vertical; font-size: 14px; }
+  .more { display: flex; gap: 16px; margin-top: 6px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13.5px; }
+  .desc { white-space: pre-line; font-size: 14px; margin-top: 8px; max-height: 480px; overflow: auto;
+          border-top: 1px solid var(--line); padding-top: 8px; }
+  .why { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; font-size: 14px; }
+  .why table { border-collapse: collapse; }
+  .why td { padding: 1px 12px 1px 0; }
+  .why td.where { white-space: nowrap; }
+  .why td.pts { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .why .total td { border-top: 1px solid var(--line); padding-top: 4px; font-weight: 700; }
+  .empty { text-align: center; color: var(--muted); padding: 48px 0; }
+  .keys { margin-top: 16px; text-align: center; }
+  kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-bottom-width: 2px;
+        border-radius: 4px; padding: 0 5px; background: var(--card); }
+
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--toast);
+           color: var(--toast-text); border-radius: 10px; padding: 10px 12px 10px 16px; display: flex; gap: 14px;
+           align-items: center; box-shadow: 0 6px 20px rgba(0,0,0,.25); font-size: 14px; max-width: calc(100% - 32px); }
+  .toast[hidden] { display: none; }
+  .toast button { background: transparent; color: inherit; border-color: currentColor; font-weight: 600; }
+
+  .settings section { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+                      padding: 14px 16px; margin: 14px 0; }
+  .settings h3 { margin: 0 0 2px; font-size: 16px; }
+  .settings p { margin: 0 0 10px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .tag { display: inline-flex; align-items: center; gap: 4px; background: var(--chip); color: var(--chip-text);
+         border-radius: 14px; padding: 3px 4px 3px 10px; font-size: 14px; }
+  .tag select { padding: 0 2px; border: none; background: transparent; color: inherit; font-size: 13px; }
+  .tag button { border: none; background: none; color: inherit; padding: 0 6px; font-size: 16px; line-height: 1; }
+  .add { display: flex; gap: 6px; flex-wrap: wrap; }
+  .add input[type=text] { flex: 1; min-width: 180px; }
+  .add button { font-size: 14px; padding: 6px 12px; }
+  .nums { display: flex; gap: 16px; flex-wrap: wrap; }
+  .nums label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+  .nums input { width: 110px; }
+  .save { position: sticky; bottom: 0; padding: 12px 0; background: var(--bg); display: flex; gap: 12px;
+          align-items: center; flex-wrap: wrap; }
+
+  @media (max-width: 600px) {
+    .job { grid-template-columns: 1fr; }
+    .grade { flex-direction: row; gap: 6px; width: auto; padding: 2px 8px; justify-self: start; margin-bottom: 6px; font-size: 15px; }
+    .actions { margin-left: 0; }
+    .keys { display: none; }
+    nav button { padding: 6px 7px; font-size: 14px; }
+    .why td { padding-right: 8px; }
+    .why .stem { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Offerte di lavoro</h1>
+    <div class="head-actions">
+      <select id="theme" aria-label="Tema" title="Tema">
+        <option value="auto">◐ Automatico</option>
+        <option value="light">☀ Chiaro</option>
+        <option value="dark">☾ Scuro</option>
+      </select>
+      <button id="go" class="primary">Cerca nuove offerte</button>
+    </div>
+    <div id="schedule" class="muted"></div>
+  </header>
+
+  <section id="status" class="status" hidden>
+    <div id="status-text"></div>
+    <div class="bar"><div id="bar"></div></div>
+    <div id="status-sub" class="muted" style="margin-top:6px"></div>
+    <ul id="warnings" class="warnings" hidden></ul>
+  </section>
+
+  <nav id="tabs">
+    <button data-tab="new" class="active">Da valutare <span class="n" id="n-new">0</span></button>
+    <button data-tab="interested">Interessanti <span class="n" id="n-interested">0</span></button>
+    <button data-tab="applications">Candidature <span class="n" id="n-applications">0</span></button>
+    <button data-tab="discarded">Scartate <span class="n" id="n-discarded">0</span></button>
+    <button data-tab="settings">Impostazioni</button>
+  </nav>
+
+  <div id="jobs-view">
+    <div class="toolbar">
+      <input id="q" type="search" placeholder="Cerca nelle offerte…" title="Cerca in titolo, azienda, luogo, descrizione e note">
+      <select id="source">
+        <option value="">Tutte le fonti</option>
+        <option value="linkedin">LinkedIn</option>
+        <option value="inpa">Concorsi (inPA)</option>
+      </select>
+      <select id="workplace">
+        <option value="">Tutte le modalità</option>
+        <option value="remote">Da remoto</option>
+        <option value="hybrid">Ibrido</option>
+        <option value="onsite">In sede</option>
+        <option value="none">Non indicata</option>
+      </select>
+      <select id="sort">
+        <option value="score">Ordina per voto</option>
+        <option value="date">Più recenti</option>
+        <option value="deadline">Scadenza</option>
+      </select>
+      <label class="muted"><input type="checkbox" id="only-salary"> solo con RAL</label>
+      <a class="btn" href="/api/export.csv" download title="Tutte le offerte con stato e note, apribile con Excel">Esporta Excel</a>
+    </div>
+    <div id="list"></div>
+    <p class="keys muted">Tastiera: <kbd>↑</kbd> <kbd>↓</kbd> sposta · <kbd>I</kbd> mi interessa · <kbd>S</kbd> scarta ·
+      <kbd>C</kbd> candidatura inviata · <kbd>Invio</kbd> apri annuncio · <kbd>D</kbd> descrizione ·
+      <kbd>V</kbd> perché questo voto · <kbd>Z</kbd> annulla</p>
+  </div>
+
+  <div id="settings-view" class="settings" hidden></div>
+</main>
+
+<div id="toast" class="toast" hidden><span id="toast-text"></span><button id="undo">Annulla</button></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let jobs = [];
+let settings = null;
+let tab = "new";
+let sel = 0;            // index of the selected card (keyboard)
+let shownGroups = [];   // groups currently rendered, in order
+const openWhy = new Set(), openDesc = new Set();
+let lastVisit = 0;
+try { lastVisit = Number(localStorage.getItem("lastVisit") || 0); } catch {}
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const utc = s => new Date(s.replace(" ", "T") + "Z");
+const fmtDate = s => s ? new Date(s).toLocaleDateString("it-IT", {day: "numeric", month: "short"}) : "";
+const fmtWhen = s => {
+  if (!s) return "";
+  const d = new Date(s), today = new Date(), yesterday = new Date(Date.now() - 864e5);
+  const day = d.toDateString() === today.toDateString() ? "oggi"
+            : d.toDateString() === yesterday.toDateString() ? "ieri"
+            : d.toLocaleDateString("it-IT", {weekday: "short", day: "numeric", month: "short"});
+  return `${day} alle ${d.toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"})}`;
+};
+const daysTo = s => Math.ceil((new Date(s + "T23:59:59") - new Date()) / 864e5);
+const api = async (path, opts) => (await fetch(path, opts)).json();
+const post = (path, body) => api(path, {method: "POST", headers: {"Content-Type": "application/json"},
+                                        body: JSON.stringify(body ?? {})});
+const keyOf = j => `${j.source}/${j.id}`;
+
+const SOURCE_LABEL = {linkedin: "LinkedIn", inpa: "Concorso pubblico"};
+const WORKPLACE_LABEL = {remote: "Da remoto", hybrid: "Ibrido", onsite: "In sede"};
+const APPLICATION = ["applied", "interview", "offer", "rejected"];
+const STAGE_LABEL = {applied: "Candidatura inviata", interview: "Colloquio", offer: "Offerta ricevuta", rejected: "Rifiutata"};
+const STAGE_ORDER = {interview: 0, offer: 1, applied: 2, rejected: 3};
+const STATUS_DONE = {interested: "Segnata come interessante", discarded: "Offerta scartata", applied: "Candidatura segnata",
+                     new: "Rimessa da valutare", interview: "Fase: colloquio", offer: "Fase: offerta ricevuta",
+                     rejected: "Fase: rifiutata"};
+const inTab = j => tab === "applications" ? APPLICATION.includes(j.status) : j.status === tab;
+
+const tooSenior = j => settings?.max_years && j.years && j.years > settings.max_years;
+function grade(j) {
+  const g = settings?.grades || {A: 10, B: 5};
+  if (tooSenior(j)) return "C";
+  return j.score >= g.A ? "A" : j.score >= g.B ? "B" : "C";
+}
+const RANK = {A: 0, B: 1, C: 2};
+
+function actions(j) {
+  const b = (set, label, hint) => `<button data-set="${set}" title="${hint}">${label}</button>`;
+  if (j.status === "new") return b("interested", "★ Mi interessa", "I") + b("applied", "Candidatura inviata", "C") + b("discarded", "Scarta", "S");
+  if (j.status === "interested") return b("applied", "Candidatura inviata", "C") + b("discarded", "Scarta", "S") + b("new", "Rimetti da valutare", "");
+  if (j.status === "discarded") return b("interested", "★ Mi interessa", "I") + b("new", "Ripristina", "");
+  return `<span class="muted">${j.applied_at ? "inviata il " + fmtDate(j.applied_at) : ""}</span>
+          <select data-stage aria-label="Fase">${APPLICATION.map(s =>
+            `<option value="${s}" ${s === j.status ? "selected" : ""}>${STAGE_LABEL[s]}</option>`).join("")}</select>
+          ${b("interested", "Togli dalle candidature", "")}`;
+}
+
+function why(j) {
+  const g = settings?.grades || {A: 10, B: 5};
+  const rows = (j.breakdown || []).map(b => `<tr>
+      <td><b>${esc(b.match)}</b>${b.match !== b.word ? ` <span class="muted stem">(parola “${esc(b.word)}”)</span>` : ""}</td>
+      <td class="muted where">${b.where === "titolo" ? `titolo · peso ${b.weight}×2` : `descrizione · peso ${b.weight}`}</td>
+      <td class="pts">+${b.points}</td></tr>`).join("");
+  const senior = tooSenior(j)
+    ? `<p class="error" style="margin:6px 0 0">Chiede almeno ${j.years} anni di esperienza (limite ${settings.max_years}): voto abbassato a C.</p>` : "";
+  return `<div class="why">
+    ${rows ? `<table>${rows}<tr class="total"><td>Punteggio</td><td></td><td class="pts">${j.score}</td></tr></table>`
+           : `<span class="muted">Nessuna parola premiante trovata.</span>`}
+    ${senior}
+    <p class="muted" style="margin:6px 0 0">Voto A da ${g.A} punti, B da ${g.B}. Pesi e soglie si cambiano in Impostazioni.</p>
+  </div>`;
+}
+
+function buildGroups() {
+  const q = $("q").value.trim().toLowerCase();
+  const wp = $("workplace").value;
+  const src = $("source").value, onlySalary = $("only-salary").checked, sort = $("sort").value;
+  const visible = jobs
+    .filter(inTab)
+    .filter(j => !src || j.source === src)
+    .filter(j => !wp || (wp === "none" ? !j.workplace : j.workplace === wp))
+    .filter(j => !onlySalary || j.salary)
+    .filter(j => !q || [j.title, j.company, j.place, j.description, j.notes].join(" ").toLowerCase().includes(q));
+  const byKey = new Map();
+  for (const j of visible) {
+    const k = j.group || keyOf(j);
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(j);
+  }
+  const groups = [...byKey.values()].map(g => g.sort((a, b) => b.score - a.score));
+  const bySeen = (a, b) => b[0].seen_at.localeCompare(a[0].seen_at);
+  const byGrade = (a, b) => RANK[grade(a[0])] - RANK[grade(b[0])] || b[0].score - a[0].score;
+  return groups.sort(tab === "applications" && sort === "score"
+      ? (a, b) => STAGE_ORDER[a[0].status] - STAGE_ORDER[b[0].status] || (b[0].applied_at || "").localeCompare(a[0].applied_at || "")
+      : sort === "date" ? (a, b) => bySeen(a, b) || byGrade(a, b)
+      : sort === "deadline" ? (a, b) => (a[0].deadline || "9999").localeCompare(b[0].deadline || "9999") || byGrade(a, b)
+      : (a, b) => byGrade(a, b) || bySeen(a, b));
+}
+
+function card(g, i) {
+  const j = g[0], gr = grade(j), key = keyOf(j);
+  const isNew = j.status === "new" && lastVisit && utc(j.seen_at).getTime() > lastVisit;
+  const others = g.slice(1);
+  const pills = [
+    `<span class="pill src">${SOURCE_LABEL[j.source] || j.source}</span>`,
+    `<span class="pill ${j.workplace ? "place" : "plain"}" title="Ricavata dal testo dell'annuncio">${WORKPLACE_LABEL[j.workplace] || "Modalità non indicata"}</span>`,
+    j.salary ? `<span class="pill salary">RAL ${esc(j.salary)}</span>` : "",
+    j.years ? `<span class="pill ${tooSenior(j) ? "warn" : "plain"}">Richiesti ${j.years}+ anni</span>` : "",
+    j.deadline ? (d => `<span class="pill ${d <= 7 ? "warn" : "plain"}">${d < 0 ? "Scaduto"
+      : `Scade ${fmtDate(j.deadline)}${d <= 7 ? ` (${d === 0 ? "oggi" : d === 1 ? "domani" : d + " giorni"})` : ""}`}</span>`)(daysTo(j.deadline)) : "",
+  ].join("");
+  const showNotes = j.status !== "new" && j.status !== "discarded";
+  return `<article class="job ${i === sel ? "sel" : ""}" data-i="${i}" data-key="${esc(key)}">
+    <button class="grade ${gr}" data-why title="Perché questo voto (V)">${gr}<small>${j.score}</small></button>
+    <div>
+      <h2><a href="${esc(j.url)}" target="_blank" rel="noopener">${esc(j.title)}</a>${isNew ? '<span class="badge">NUOVA</span>' : ""}</h2>
+      <div class="meta">${esc(j.company)} · ${esc(j.place)}${j.posted ? " · pubblicata " + fmtDate(j.posted) : ""}
+        ${others.length ? `<br>Anche pubblicata da: ${others.map(o =>
+          `<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.company)}</a>`).join(", ")}` : ""}</div>
+      <div class="row"><div class="pills">${pills}</div><div class="actions">${actions(j)}</div></div>
+      ${showNotes ? `<textarea class="notes" data-notes placeholder="Note (es. sentito HR il 3/10, colloquio lunedì…)">${esc(j.notes || "")}</textarea>` : ""}
+      ${openWhy.has(key) ? why(j) : ""}
+      <details ${openDesc.has(key) ? "open" : ""} data-desc><summary>Descrizione</summary>
+        <div class="desc">${esc(j.description || "Descrizione non disponibile.")}</div>
+      </details>
+    </div>
+  </article>`;
+}
+
+function renderJobs() {
+  const count = pred => new Set(jobs.filter(pred).map(j => j.group || keyOf(j))).size;
+  $("n-new").textContent = count(j => j.status === "new");
+  $("n-interested").textContent = count(j => j.status === "interested");
+  $("n-applications").textContent = count(j => APPLICATION.includes(j.status));
+  $("n-discarded").textContent = count(j => j.status === "discarded");
+
+  shownGroups = buildGroups();
+  sel = Math.min(sel, Math.max(0, shownGroups.length - 1));
+  if (!shownGroups.length) {
+    const filtered = $("q").value || $("source").value || $("workplace").value || $("only-salary").checked;
+    const msg = {new: jobs.length ? "Niente da valutare. Premi “Cerca nuove offerte” per aggiornare."
+                                  : "Nessuna offerta ancora. Premi “Cerca nuove offerte”.",
+                 interested: "Nessuna offerta segnata come interessante.",
+                 applications: "Nessuna candidatura. Usa “Candidatura inviata” su un'offerta.",
+                 discarded: "Nessuna offerta scartata."}[tab];
+    $("list").innerHTML = `<div class="empty">${filtered ? "Nessuna offerta corrisponde al filtro." : msg}</div>`;
+    return;
+  }
+  $("list").innerHTML = shownGroups.map(card).join("");
+}
+
+async function loadJobs() {
+  jobs = await api("/api/jobs");
+  if (!document.activeElement?.matches?.("[data-notes]")) renderJobs();  // don't break typing
+}
+
+// ---------- status changes + undo ----------
+
+let undoStack = [], toastTimer = null;
+
+async function setStatus(group, status) {
+  const prev = group.map(j => [j, j.status]);
+  await Promise.all(group.map(j => post(`/api/job/${keyOf(j)}`, {status})));
+  for (const j of group) {
+    if (status === "applied" && !j.applied_at) j.applied_at = new Date().toISOString().slice(0, 10);
+    j.status = status;
+  }
+  undoStack.push(prev);
+  toast(STATUS_DONE[status] + (group.length > 1 ? ` (${group.length} annunci)` : ""));
+  renderJobs();
+}
+
+async function undo() {
+  const prev = undoStack.pop();
+  if (!prev) return;
+  await Promise.all(prev.map(([j, s]) => post(`/api/job/${keyOf(j)}`, {status: s})));
+  for (const [j, s] of prev) j.status = s;
+  $("toast").hidden = true;
+  renderJobs();
+}
+
+function toast(text) {
+  $("toast-text").textContent = text;
+  $("undo").hidden = !undoStack.length;
+  $("toast").hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $("toast").hidden = true; }, 6000);
+}
+$("undo").onclick = undo;
+
+const groupOf = el => shownGroups[Number(el.closest("[data-i]")?.dataset.i)];
+
+$("list").addEventListener("click", e => {
+  const art = e.target.closest("[data-i]");
+  if (art) { sel = Number(art.dataset.i); document.querySelectorAll(".job").forEach(x => x.classList.toggle("sel", x === art)); }
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  if (btn.dataset.set) setStatus(groupOf(btn), btn.dataset.set);
+  if ("why" in btn.dataset) toggle(openWhy, keyOf(groupOf(btn)[0]));
+});
+$("list").addEventListener("toggle", e => {
+  if (!("desc" in e.target.dataset)) return;
+  const k = e.target.closest("[data-key]").dataset.key;
+  e.target.open ? openDesc.add(k) : openDesc.delete(k);
+}, true);
+$("list").addEventListener("change", async e => {
+  if ("stage" in e.target.dataset) setStatus(groupOf(e.target), e.target.value);
+  if ("notes" in e.target.dataset) {
+    const j = groupOf(e.target)[0];
+    j.notes = e.target.value;
+    await post(`/api/job/${keyOf(j)}`, {notes: j.notes});
+  }
+});
+
+function toggle(set, k) { set.has(k) ? set.delete(k) : set.add(k); renderJobs(); }
+
+// ---------- keyboard ----------
+
+document.addEventListener("keydown", e => {
+  if (tab === "settings" || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target.matches("input, textarea, select")) {
+    if (e.key === "Escape") e.target.blur();
+    return;
+  }
+  const k = e.key.toLowerCase();
+  if (k === "enter" && e.target.matches("button, a, summary")) return;  // let Enter activate the focused control
+  const g = shownGroups[sel];
+  const move = d => {
+    if (!shownGroups.length) return;
+    sel = Math.max(0, Math.min(shownGroups.length - 1, sel + d));
+    document.querySelectorAll(".job").forEach(x => x.classList.toggle("sel", Number(x.dataset.i) === sel));
+    document.querySelector(`.job[data-i="${sel}"]`)?.scrollIntoView({block: "nearest", behavior: "smooth"});
+  };
+  if (k === "arrowdown" || k === "j") move(1);
+  else if (k === "arrowup" || k === "k") move(-1);
+  else if (k === "z") undo();
+  else if (!g) return;
+  else if (k === "i" && g[0].status !== "interested") setStatus(g, "interested");
+  else if (k === "s" && g[0].status !== "discarded") setStatus(g, "discarded");
+  else if (k === "c" && !APPLICATION.includes(g[0].status)) setStatus(g, "applied");
+  else if (k === "enter") window.open(g[0].url, "_blank", "noopener");
+  else if (k === "d") toggle(openDesc, keyOf(g[0]));
+  else if (k === "v") toggle(openWhy, keyOf(g[0]));
+  else return;
+  e.preventDefault();
+});
+
+// ---------- settings ----------
+
+const LISTS = {
+  keywords: ["Ruoli cercati su LinkedIn",
+    "Ognuno viene cercato su Roma (tutte le modalità) e in Italia (solo remoto). Più ruoli = ricerca più lunga."],
+  keywords_inpa: ["Parole cercate nei concorsi pubblici (inPA)",
+    "Cercate nel titolo dei bandi aperti con sede Roma. Meglio parole singole (appalti, contratti…)."],
+  exclude_title: ["Escludi se nel titolo", "Es. buyer, stage, director."],
+  exclude: ["Escludi se nel testo", "Titolo o descrizione. Attenzione: parole comuni scartano molte offerte."],
+  exclude_companies: ["Aziende escluse", "Basta una parte del nome."],
+  exclude_required_languages: ["Lingue: escludi se richieste",
+    "Scarta l'offerta se la lingua è richiesta; va bene se indicata come gradita. Usa la radice (tedesc = tedesco/tedesca)."],
+};
+
+function renderSettings() {
+  const s = settings;
+  const weighted = Object.entries(s.nice_to_have).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const listSection = key => { const [title, hint] = LISTS[key]; return `<section>
+      <h3>${title}</h3><p class="muted">${hint}</p>
+      <div class="tags">${s[key].map((w, i) =>
+        `<span class="tag">${esc(w)}<button data-del="${key}" data-i="${i}" title="Rimuovi">×</button></span>`).join("")
+        || '<span class="muted">nessuna</span>'}</div>
+      <form class="add" data-add="${key}"><input type="text" placeholder="Aggiungi… (più parole: separale con la virgola)"><button>Aggiungi</button></form>
+    </section>`; };
+
+  $("settings-view").innerHTML = `
+    ${listSection("keywords")}
+    ${listSection("keywords_inpa")}
+    <section>
+      <h3>Periodo di ricerca</h3>
+      <p class="muted">Offerte LinkedIn pubblicate negli ultimi giorni indicati. Scegli un periodo più lungo del tempo
+        passato dall'ultima ricerca, così non perdi niente: le offerte già viste non vengono ripetute.
+        I concorsi inPA includono sempre tutti i bandi ancora aperti.</p>
+      <div class="nums"><label>Ultimi giorni<select id="posted_within_days">${[1, 3, 7, 14, 30].map(n =>
+        `<option value="${n}" ${n === s.posted_within_days ? "selected" : ""}>${n === 1 ? "24 ore" : n + " giorni"}</option>`).join("")}</select></label></div>
+      <p class="muted" id="since-last" style="margin-top:8px"></p>
+    </section>
+    <section>
+      <h3>Parole che alzano il voto</h3>
+      <p class="muted">Peso 1–3; se la parola è nel titolo vale doppio. Usa la radice per prendere le varianti
+        (contratt = contratto, contrattuale).</p>
+      <div class="tags">${weighted.map(([w, v]) => `<span class="tag">${esc(w)}
+        <select data-weight="${esc(w)}">${[1, 2, 3].map(n => `<option ${n === v ? "selected" : ""}>${n}</option>`).join("")}</select>
+        <button data-delw="${esc(w)}" title="Rimuovi">×</button></span>`).join("")}</div>
+      <form class="add" data-addw><input type="text" placeholder="Nuova parola…">
+        <select><option>1</option><option selected>2</option><option>3</option></select><button>Aggiungi</button></form>
+    </section>
+    <section>
+      <h3>Esperienza richiesta</h3>
+      <p class="muted">Se un'offerta chiede più anni di esperienza di questo limite (es. “almeno 5 anni”). 0 = nessun limite.</p>
+      <div class="nums">
+        <label>Anni massimi<input type="number" min="0" max="15" id="max_years" value="${s.max_years}"></label>
+        <label>Se superati<select id="years_action">
+          <option value="grade_c" ${s.years_action === "grade_c" ? "selected" : ""}>mostra con voto C</option>
+          <option value="exclude" ${s.years_action === "exclude" ? "selected" : ""}>scarta l'offerta</option>
+        </select></label>
+      </div>
+    </section>
+    ${["exclude_title", "exclude", "exclude_companies", "exclude_required_languages"].map(listSection).join("")}
+    <section>
+      <h3>Voto e soglia</h3>
+      <p class="muted">Punteggio = somma dei pesi delle parole trovate. Sotto il minimo l'offerta non viene mostrata.</p>
+      <div class="nums">
+        <label>Punteggio minimo<input type="number" min="0" id="min_score" value="${s.min_score}"></label>
+        <label>Voto A da<input type="number" min="0" id="grade_a" value="${s.grades.A}"></label>
+        <label>Voto B da<input type="number" min="0" id="grade_b" value="${s.grades.B}"></label>
+      </div>
+    </section>
+    <div class="save"><span id="save-msg" class="muted">Le modifiche si salvano da sole.</span></div>`;
+  sinceLastHint();
+}
+
+let lastFinished = null;
+function sinceLastHint() {
+  const el = $("since-last");
+  if (!el || !lastFinished) return;
+  const days = Math.floor((Date.now() - new Date(lastFinished)) / 864e5);
+  const chosen = Number($("posted_within_days").value);
+  el.innerHTML = days < 1 ? "Ultima ricerca: oggi."
+    : `Ultima ricerca: ${days} giorn${days === 1 ? "o" : "i"} fa.` +
+      (days >= chosen ? ` <span class="error">Il periodo scelto è più corto: alcune offerte potrebbero sfuggire.</span>` : "");
+}
+
+function readNumbers() {
+  settings.posted_within_days = Number($("posted_within_days").value);
+  settings.min_score = Number($("min_score").value);
+  settings.max_years = Number($("max_years").value);
+  settings.years_action = $("years_action").value;
+  settings.grades = {A: Number($("grade_a").value), B: Number($("grade_b").value)};
+}
+
+$("settings-view").addEventListener("click", e => {
+  const t = e.target;
+  if (t.dataset.del) { settings[t.dataset.del].splice(Number(t.dataset.i), 1); dirty(); }
+  else if (t.dataset.delw) { delete settings.nice_to_have[t.dataset.delw]; dirty(); }
+});
+$("settings-view").addEventListener("change", e => {
+  if (e.target.dataset.weight) settings.nice_to_have[e.target.dataset.weight] = Number(e.target.value);
+  dirty(false);
+  sinceLastHint();
+});
+// add the words typed in one "Aggiungi…" box (comma-separated allowed); returns true if something was added
+function addTyped(f) {
+  const input = f.querySelector("input");
+  const words = input.value.split(",").map(w => w.trim().toLowerCase()).filter(Boolean);
+  for (const w of words) {
+    if ("addw" in f.dataset) settings.nice_to_have[w] = Number(f.querySelector("select").value);
+    else if (!settings[f.dataset.add].includes(w)) settings[f.dataset.add].push(w);
+  }
+  input.value = "";
+  return words.length > 0;
+}
+
+$("settings-view").addEventListener("submit", e => {
+  e.preventDefault();
+  const f = e.target;
+  if (!addTyped(f)) return;
+  const sel = "addw" in f.dataset ? "[data-addw] input" : `[data-add="${f.dataset.add}"] input`;
+  dirty();
+  document.querySelector(sel)?.focus();
+});
+
+const typedPending = () => [...document.querySelectorAll("#settings-view form.add input")].some(i => i.value.trim());
+
+// before searching / leaving the settings: text typed but not confirmed is added, and everything is saved
+async function flushSettings() {
+  if (!$("min_score")) return true;  // settings tab never opened: nothing to save
+  let typed = false;
+  document.querySelectorAll("#settings-view form.add").forEach(f => { typed = addTyped(f) || typed; });
+  if (typed) { readNumbers(); if (tab === "settings") { const y = scrollY; renderSettings(); scrollTo(0, y); } }
+  if (!typed && !savePending) return true;
+  clearTimeout(saveTimer);
+  savePending = true;
+  return await save();
+}
+
+// every change is saved automatically (short debounce), so nothing is lost on reload
+let saveTimer = null, savePending = false;
+
+function dirty(rerender = true) {
+  readNumbers();
+  if (rerender) { const y = scrollY; renderSettings(); scrollTo(0, y); }
+  savePending = true;
+  $("save-msg").textContent = "Salvataggio…";
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 500);
+}
+
+async function save() {
+  let r;
+  try { r = await post("/api/settings", settings); }
+  catch { r = {error: "il programma non risponde: riapri l'icona AutoSearch e ripeti la modifica"}; }
+  const msg = $("save-msg");
+  if (r.error) {
+    if (msg) msg.innerHTML = `<span class="error">Non salvato: ${esc(r.error)}</span>`;
+    return false;  // savePending stays true: leaving the page warns
+  }
+  savePending = false;
+  const time = new Date().toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"});
+  if (msg) msg.textContent = `✓ Salvato alle ${time} · ${r.matched} offerte pertinenti. Ruoli e parole di ricerca nuovi valgono dalla prossima ricerca.`;
+  loadJobs();
+  return true;
+}
+
+window.addEventListener("beforeunload", e => { if (savePending || typedPending()) { e.preventDefault(); e.returnValue = ""; } });
+
+// ---------- tabs, search, status ----------
+
+$("tabs").onclick = e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  if (tab === "settings" && b.dataset.tab !== "settings") flushSettings();
+  tab = b.dataset.tab;
+  sel = 0;
+  document.querySelectorAll("#tabs button").forEach(x => x.classList.toggle("active", x === b));
+  $("jobs-view").hidden = tab === "settings";
+  $("settings-view").hidden = tab !== "settings";
+  if (tab === "settings") renderSettings(); else renderJobs();
+};
+
+$("q").oninput = $("sort").onchange = $("source").onchange = $("workplace").onchange = $("only-salary").onchange = () => { sel = 0; renderJobs(); };
+
+function showStatus(s) {
+  lastFinished = s.finished_at || null;
+  $("schedule").textContent = s.finished_at && !s.running ? `Ultima ricerca: ${fmtWhen(s.finished_at)}` : "";
+
+  const box = $("status");
+  const warnings = !s.running && s.warnings?.length ? s.warnings : [];
+  box.hidden = !s.running && !s.error && !warnings.length;
+  $("warnings").hidden = !warnings.length;
+  $("warnings").innerHTML = warnings.map(w => `<li>${esc(w)}</li>`).join("");
+  const total = s.total || 1, step = Math.min(s.step || 0, total);
+  $("bar").parentElement.hidden = false;
+  if (s.running) {
+    $("status-text").textContent = `Ricerca ${Math.min(step + 1, total)} di ${total}: ${s.label || "avvio…"}`;
+    $("bar").style.width = `${Math.round(step / total * 100)}%`;
+    $("status-sub").textContent = `${s.checked || 0} offerte nuove analizzate · ${s.matches || 0} pertinenti · ${s.top || 0} con voto A`;
+  } else if (s.error) {
+    $("status-text").innerHTML = `<span class="error">Ultima ricerca non completata: ${esc(s.error)}</span>`;
+    $("status-sub").textContent = "";
+    $("bar").style.width = "0";
+  } else if (warnings.length) {
+    $("status-text").innerHTML = `<b>Attenzione</b> — l'ultima ricerca ha avuto problemi:`;
+    $("status-sub").textContent = "";
+    $("bar").parentElement.hidden = true;
+  }
+  $("go").disabled = !!s.running;
+  $("go").textContent = s.running ? "Ricerca in corso…" : "Cerca nuove offerte";
+}
+
+let timer = null, wasRunning = false;
+async function poll() {
+  const s = await api("/api/status");
+  showStatus(s);
+  if (s.running || wasRunning) await loadJobs();
+  if (wasRunning && !s.running && !s.error) {
+    $("status").hidden = false;
+    $("status-text").textContent = `Ricerca completata: ${s.matches || 0} nuove offerte pertinenti, ${s.top || 0} con voto A.` +
+      (s.warnings?.length ? " Attenzione:" : "");
+    $("bar").style.width = "100%";
+    $("status-sub").textContent = `${s.checked || 0} offerte nuove analizzate`;
+  }
+  wasRunning = s.running;
+  clearTimeout(timer);
+  timer = setTimeout(poll, s.running ? 3000 : 30000);
+}
+
+// theme: auto (follow the system) | light | dark, remembered per browser
+$("theme").value = document.documentElement.dataset.theme || "auto";
+$("theme").onchange = () => {
+  const t = $("theme").value;
+  if (t === "auto") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = t;
+  try { t === "auto" ? localStorage.removeItem("theme") : localStorage.setItem("theme", t); } catch {}
+};
+
+$("go").onclick = async () => {
+  $("go").disabled = true;
+  if (!await flushSettings()) {   // new keywords must be saved before the search reads them
+    $("go").disabled = false;
+    $("status").hidden = false;
+    $("status-text").innerHTML = `<span class="error">Impostazioni non salvate: ricerca non avviata. Controlla la scheda Impostazioni.</span>`;
+    return;
+  }
+  await post("/api/search");
+  poll();
+};
+
+(async () => {
+  settings = await api("/api/settings");
+  await loadJobs();
+  poll();
+})();
+// "NUOVA" = found after the previous time this page was opened
+window.addEventListener("beforeunload", () => {
+  try { localStorage.setItem("lastVisit", String(Date.now())); } catch {}
+});
+</script>
+</body>
+</html>
