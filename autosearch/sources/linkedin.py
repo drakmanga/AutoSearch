@@ -4,6 +4,7 @@ Endpoints are the ones the public jobs page uses; HTML may change without notice
 Keep request volume low: LinkedIn rate-limits (HTTP 429) aggressive clients.
 """
 import logging
+import random
 import re
 import time
 from typing import Iterable
@@ -19,6 +20,7 @@ log = logging.getLogger(__name__)
 SEARCH_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 DETAIL_URL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{id}"
 PAGE_SIZE = 25
+MAX_DELAY = 20.0  # cap for the adaptive delay between requests
 
 WORKPLACE = {"onsite": "1", "remote": "2", "hybrid": "3"}
 EXPERIENCE = {
@@ -33,7 +35,7 @@ class LinkedIn:
     def __init__(self, delay: float = 3.0):
         self.delay = delay
         self.failed = 0        # requests that gave up (health check)
-        self.rate_limited = 0  # HTTP 429 responses
+        self.rate_limited = 0  # requests lost to HTTP 429 (gave up after retries)
         self.session = requests.Session()
         self.session.headers["User-Agent"] = (
             "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -41,8 +43,9 @@ class LinkedIn:
         )
 
     def _get(self, url: str, params: dict | None = None) -> str | None:
-        for attempt in range(3):
-            time.sleep(self.delay * (attempt + 1))
+        throttled = False
+        for attempt in range(4):
+            time.sleep(self.delay * random.uniform(0.7, 1.5))  # jitter: evenly spaced bursts look like a bot
             try:
                 r = self.session.get(url, params=params, timeout=20)
             except requests.RequestException as e:  # e.g. network not up yet after boot
@@ -52,14 +55,20 @@ class LinkedIn:
             if r.status_code == 200:
                 return r.text
             if r.status_code == 429:
-                self.rate_limited += 1
-                log.warning("rate limited, backing off")
-                time.sleep(30 * (attempt + 1))
+                throttled = True
+                # slow down for the rest of the run, not just this request
+                self.delay = min(self.delay * 1.5, MAX_DELAY)
+                wait = _retry_after(r) or 60 * 2 ** attempt
+                log.warning("rate limited, waiting %ss (delay now %.1fs)", wait, self.delay)
+                time.sleep(wait)
                 continue
             log.warning("GET %s -> %s", r.url, r.status_code)
             self.failed += 1
             return None
-        self.failed += 1
+        if throttled:
+            self.rate_limited += 1
+        else:
+            self.failed += 1
         return None
 
     def search(self, search: Search) -> Iterable[Job]:
@@ -99,6 +108,13 @@ class LinkedIn:
             job.salary = _pay_range(pay.get_text(" ", strip=True)) or job.salary
         node = soup.select_one("div.show-more-less-html__markup")
         return node.get_text("\n", strip=True) if node else ""
+
+
+def _retry_after(r: requests.Response) -> int:
+    try:
+        return min(int(r.headers.get("Retry-After", 0)), 600)
+    except ValueError:
+        return 0
 
 
 def _pay_range(text: str) -> str:

@@ -87,8 +87,8 @@ def health_warnings(cfg, sources: dict, raw: Counter, no_title: int, fetched: in
         elif src.failed:
             warnings.append(f"{NAMES[name]}: {src.failed} richieste non riuscite, alcuni risultati potrebbero mancare.")
         if src.rate_limited:
-            warnings.append(f"{NAMES[name]} ha rallentato le richieste ({src.rate_limited} volte): "
-                            "alcune ricerche potrebbero essere incomplete. Riprova più tardi.")
+            warnings.append(f"{NAMES[name]} ha rallentato le richieste: {src.rate_limited} non riuscite "
+                            "anche dopo varie attese, alcuni risultati potrebbero mancare. Riprova più tardi.")
     total = sum(raw.values())
     if total >= 5 and no_title > total / 2:
         warnings.append(f"{no_title} offerte su {total} senza titolo: il sito potrebbe aver cambiato la pagina.")
