@@ -22,6 +22,18 @@ Da terminale:
     .venv/bin/python -m autosearch --dry-run    # test: niente DB, output a console
 
 
+## Windows
+
+Serve Python 3 (python.org, spunta "Add python.exe to PATH"). Da PowerShell nella cartella:
+
+    py -m venv .venv
+    .venv\Scripts\pip install -r requirements.txt
+    copy config.example.yaml config.yaml
+
+Poi doppio click su **run.bat** (per comodità: tasto destro → Invia a → Desktop (crea collegamento)).
+Apre http://127.0.0.1:8765 come su Linux. Dopo un aggiornamento del codice chiudi la pagina e
+aspetta 15 min (o termina `pythonw.exe` da Gestione attività) prima di riaprire.
+
 ## Note
 
 - Endpoint non ufficiale: l'HTML di LinkedIn può cambiare e rompere il parser (`autosearch/sources/linkedin.py`).
