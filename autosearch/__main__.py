@@ -114,7 +114,7 @@ def run_tracked(cfg: config.Config) -> list:
     except Exception as e:  # a failed backup must not block the search
         log.warning("backup failed: %s", e)
     state = {"running": True, "pid": os.getpid(), "error": None,
-             "started_at": datetime.now().isoformat(timespec="seconds")}
+             "started_at": datetime.now().astimezone().isoformat(timespec="seconds")}
     status.save(state)
     try:
         return run(cfg, state=state, progress=lambda: status.save(state))
@@ -122,7 +122,7 @@ def run_tracked(cfg: config.Config) -> list:
         state["error"] = str(e)
         raise
     finally:
-        state.update(running=False, finished_at=datetime.now().isoformat(timespec="seconds"))
+        state.update(running=False, finished_at=datetime.now().astimezone().isoformat(timespec="seconds"))
         status.save(state)
 
 
