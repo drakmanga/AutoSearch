@@ -3,3 +3,6 @@ __pycache__/
 data/
 config.yaml
 *.pdf
+build/
+dist/
+windows/autosearch.ico
