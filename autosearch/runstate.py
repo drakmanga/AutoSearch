@@ -2,6 +2,7 @@
 searches started by the background timer."""
 import json
 import os
+import sys
 from pathlib import Path
 
 
@@ -28,9 +29,41 @@ class RunState:
         tmp.replace(self.path)
 
 
+STILL_ACTIVE = 259  # GetExitCodeProcess code for a process that has not exited
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+
+
 def _alive(pid: int) -> bool:
+    if not pid:
+        return False
+    if sys.platform == "win32":
+        return _alive_windows(pid)
     try:
         os.kill(pid, 0)
         return True
     except (OSError, TypeError):
         return False
+
+
+def _alive_windows(pid: int) -> bool:
+    """On Windows os.kill() goes through TerminateProcess and raises WinError 87
+    for signal 0 instead of reporting the state, which made a running search
+    look interrupted. Ask the OS for the exit code instead."""
+    import ctypes
+
+    try:
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+    except (OSError, TypeError, ValueError):
+        return False
+    if not handle:
+        return False  # no such process (or not ours to look at)
+    try:
+        code = ctypes.c_ulong()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return False
+        # a process exiting with 259 reads as alive: harmless here, the search
+        # only ever ends by finishing or dying
+        return code.value == STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
